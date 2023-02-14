@@ -9,6 +9,74 @@ import numpy as np
 tasks_file = "tasks.csv"
 historical_tasks_file = "historical_tasks.csv"
 
+
+def read_file_to_df(file_name):
+    return pd.read_csv(file_name)
+
+
+def write_df_to_file(df, file_name):
+    df.to_csv(file_name, index=False)
+
+
+def add_task(df, task_name, start_time):
+    current_tasks = {}
+
+    current_tasks["Task_Name"] = [task_name]
+    current_tasks["Start_Time"] = [start_time]
+    current_tasks["End_Time"] = [np.nan]
+
+    df = pd.concat([df, pd.DataFrame(current_tasks)], axis=0)
+
+    return df
+
+
+def end_task(df, task_id):
+    print("End time will be set to current time")
+
+    df.loc[task_id, "End_Time"] = datetime.datetime.now()
+    return df
+
+
+def create_summary(summary_file):
+    df = read_file_to_df(tasks_file)
+
+    df.loc[:, "Start_Time"] = pd.to_datetime(df.loc[:, "Start_Time"])
+    df.loc[:, "End_Time"] = pd.to_datetime(df.loc[:, "End_Time"])
+    df.loc[:, "Duration"] = df.loc[:, "End_Time"] - df.loc[:, "Start_Time"]
+
+    tasks = list(set(df.loc[:, "Task_Name"].values))
+    seperator = "-" * 100 + "\n"
+
+    print("Creating Summary of Tasks")
+
+    with open(summary_file, "w") as f:
+        from_date = df.loc[:, "Start_Time"].min()
+        to_date = df.loc[:, "Start_Time"].max()
+        f.write(seperator)
+        f.write(
+            f"From {from_date.day}/{from_date.month}/{from_date.year} to {to_date.day}/{to_date.month}/{to_date.year}\n"
+        )
+        f.write(seperator)
+        for task in tasks:
+            f.write(f"Task: {task}\n")
+            f.write(seperator)
+            total_time_spent_on_task = (
+                df.loc[df.loc[:, "Task_Name"] == task, "Duration"].sum().total_seconds()
+            )
+            total_time_spent_on_task /= 3600  # Convert to hours
+            f.write(f"\tTotal time spent on task: {total_time_spent_on_task} hours\n")
+    print("Summary created successfully!")
+
+    if os.path.exists(historical_tasks_file):
+        historical_df = read_file_to_df(historical_tasks_file)
+        historical_df = pd.concat([historical_df, df], axis=0)
+        write_df_to_file(historical_df, historical_tasks_file)
+    else:
+        write_df_to_file(df, historical_tasks_file)
+
+    os.remove(tasks_file)
+
+
 while True:
     print("----------------------------------------------------------------")
     print("------------------------Task Logger-----------------------------")
@@ -19,38 +87,32 @@ while True:
     print("(4) Exit")
     print("Enter your choice (1, 2, 3, 4): ", end="")
     choice = int(input())
+    print(f"Choice: {choice}")
 
     if choice == 4:
         print("Exiting...")
         break
     elif choice == 1:
         try:
-            df = pd.read_csv(tasks_file, index_col=None)
+            df = read_file_to_df(tasks_file)
         except FileNotFoundError:
-            df = pd.DataFrame()
+            df = pd.DataFrame(columns=["Task_Name", "Start_Time", "End_Time"])
 
-        current_tasks = {}
-
-        print("Adding a new task...")
         print("Enter task name: ", end="")
         task_name = input()
+
         print("Start Time will be set to current time")
         start_time = datetime.datetime.now()
 
-        current_tasks["Task_Name"] = [task_name]
-        current_tasks["Start_Time"] = [start_time]
-        current_tasks["End_Time"] = [np.nan]
+        df = add_task(df, task_name, start_time)
 
-        df = pd.concat([df, pd.DataFrame(current_tasks)], axis=0)
         df.to_csv(tasks_file, index=False)
-
         print("Task added successfully!")
     elif choice == 2:
         try:
-            df = pd.read_csv(tasks_file, index_col=None)
+            df = read_file_to_df(tasks_file)
         except FileNotFoundError:
             print("No open tasks found! Use option 1 to add a new task.")
-            continue
 
         print("Current Tasks without end time:")
         current_tasks_without_end_time = df.loc[df.loc[:, "End_Time"].isna(), :]
@@ -59,54 +121,15 @@ while True:
         print("Enter index of task to enter end time: ", end="")
         task_id = int(input())
 
-        print("End time will be set to current time")
+        df = end_task(df, task_id)
 
-        df.loc[task_id, "End_Time"] = datetime.datetime.now()
-        df.to_csv(tasks_file, index=False)
-
-        print("Task updated successfully!")
+        write_df_to_file(df, tasks_file)
         del df
 
+        print("Task updated successfully!")
+
     elif choice == 3:
-        df = pd.read_csv(tasks_file, index_col=None)
-
-        df.loc[:, "Start_Time"] = pd.to_datetime(df.loc[:, "Start_Time"])
-        df.loc[:, "End_Time"] = pd.to_datetime(df.loc[:, "End_Time"])
-        df.loc[:, "Duration"] = df.loc[:, "End_Time"] - df.loc[:, "Start_Time"]
-
-        tasks = list(set(df.loc[:, "Task_Name"].values))
         current_date = datetime.datetime.now().date().strftime("%d_%m_%y")
-        seperator = "-" * 100 + "\n"
+        summary_file = f"summary_tasks_{current_date}.txt"
 
-        print("Creating Summary of Tasks")
-
-        with open(f"summary_tasks_{current_date}.txt", "w") as f:
-            from_date = df.loc[:, "Start_Time"].min()
-            to_date = df.loc[:, "Start_Time"].max()
-            f.write(seperator)
-            f.write(
-                f"From {from_date.day}/{from_date.month}/{from_date.year} to {to_date.day}/{to_date.month}/{to_date.year}\n"
-            )
-            f.write(seperator)
-            for task in tasks:
-                f.write(f"Task: {task}\n")
-                f.write(seperator)
-                total_time_spent_on_task = (
-                    df.loc[df.loc[:, "Task_Name"] == task, "Duration"]
-                    .sum()
-                    .total_seconds()
-                )
-                total_time_spent_on_task /= 3600  # Convert to hours
-                f.write(
-                    f"\tTotal time spent on task: {total_time_spent_on_task} hours\n"
-                )
-        print("Summary created successfully!")
-
-        if os.path.exists(historical_tasks_file):
-            historical_df = pd.read_csv(historical_tasks_file, index_col=None)
-            historical_df = pd.concat([historical_df, df], axis=0)
-            historical_df.to_csv(historical_tasks_file, index=False)
-        else:
-            df.to_csv(historical_tasks_file, index=False)
-
-        os.remove(tasks_file)
+        create_summary(summary_file)
